@@ -7,9 +7,9 @@ import userRoutes from '../Backend/routes/user.routes.js'
 import profileRoutes from '../Backend/routes/profile.routes.js';
 import healthRoutes from '../Backend/routes/healthRoutine.routes.js';
 import medicationRoutes from '../Backend/routes/medication.routes.js';
-import reminderRoutes from '../Backend/routes/reminder.routes.js';
 import dashboardRoutes from '../Backend/routes/dashboard.routes.js';
 import careGiverRoutes from '../Backend/routes/careGiver.routes.js';
+
 const app = express();
 app.use(cors({
     origin: 'http://localhost:5173',
@@ -26,9 +26,9 @@ app.use('/users', userRoutes);
 app.use('/profile',profileRoutes);
 app.use('/health',healthRoutes);
 app.use('/medication',medicationRoutes);
-app.use('/reminders',reminderRoutes);
 app.use('/dashboard',dashboardRoutes);
 app.use('/careGiver',careGiverRoutes);
+
 
 
 

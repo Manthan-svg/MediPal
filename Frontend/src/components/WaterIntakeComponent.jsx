@@ -1,12 +1,25 @@
-import React, { useContext, useEffect, useState } from 'react'
+import React, { useContext, useEffect, useState, useRef } from 'react'
 import { FaChartLine, FaClock, FaHeart, FaRegCalendarCheck, FaTint, FaRegLemon, FaHome, FaWalking, FaBed, FaPills, FaUserFriends, FaRobot, FaCog, FaSignOutAlt, FaSearch } from 'react-icons/fa'
-import { useLoaderData, useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import SettingsComponent from './SettingsComponent';
 import { toast } from 'react-toastify';
 import { UserContext } from '../utils/UserContextComponent';
 import { motion } from "framer-motion";
 import WeeklyWaterChart from './WeeklyWaterChart';
+import goal from '../Animations/Mission.gif';
+
+// Helper to get today's date string (YYYY-MM-DD)
+const getTodayString = () => {
+  const today = new Date();
+  return today.toISOString().split('T')[0];
+};
+// Helper to get yesterday's date string (YYYY-MM-DD)
+const getYesterdayString = () => {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return yesterday.toISOString().split('T')[0];
+};
 
 function WaterIntakeComponent() {
   const navigate = useNavigate();
@@ -15,28 +28,31 @@ function WaterIntakeComponent() {
   const [activeTab, setActiveTab] = useState('Water Intake');
   const [height, setHeight] = useState(0);
   const [count, setCount] = useState(0);
-  const [percentage, setPercentage] = useState(() => {
-    const savedPercentage = localStorage.getItem('Total-Percentage');
-    return savedPercentage ? JSON.parse(savedPercentage) : 0
-  });
+
+  // Get medical condition data and user role
   const medicalConditionRelatedData = JSON.parse(localStorage.getItem('MedicalConditions-Related-Data'));
   const userRole = JSON.parse(localStorage.getItem('User-Role'));
-  const [totalWaterIntake, setTotalWaterIntake] = useState(() => {
-    const savedWaterIntake = localStorage.getItem('Total-Water-Intake');
-    return savedWaterIntake ? JSON.parse(savedWaterIntake) : 0
+  const dailyGoal = Number(medicalConditionRelatedData?.WaterIntake) || 0;
+
+  // Water intake state per day
+  const [today, setToday] = useState(getTodayString());
+  const [totalWaterIntake, setTotalWaterIntake] = useState(0);
+  const [percentage, setPercentage] = useState(0);
+  const [congModal, setCongModal] = useState(false);
+
+  // For yesterday's completion message
+  const [yesterdayMessage, setYesterdayMessage] = useState('');
+
+  // Store water intake history as { [date]: { total, completed, messageShown } }
+  const [waterHistory, setWaterHistory] = useState(() => {
+    const saved = localStorage.getItem('Water-Intake-History');
+    return saved ? JSON.parse(saved) : {};
   });
-  const [congModal, setCongModal] = useState(()=>{
-      if(totalWaterIntake === Number(medicalConditionRelatedData?.WaterIntake)){
-            return true;
-      }else{
-        return false;
-      }
-  });
-  const data = [
-    { name: "Tea/Coffee", value: 19 },
-    { name: "Milk based", value: 41 },
-    { name: "Other", value: 39 },
-  ];
+
+  // To avoid double effect on mount
+  const didInit = useRef(false);
+
+  // Sidebar tabs
   const sidebarTabs = [
     { id: 'Dashboard', icon: FaHome, label: 'Dashboard' },
     { id: 'Water Intake', icon: FaTint, label: 'Water Intake' },
@@ -46,7 +62,134 @@ function WaterIntakeComponent() {
     { id: 'Caregiver', icon: FaUserFriends, label: 'Caregiver' },
     { id: 'MediPal Assistant', icon: FaRobot, label: 'MediPal Assistant' },
     { id: 'Settings', icon: FaCog, label: 'Settings' },
-  ]
+  ];
+
+  const [filterSideBarTabs, setFilterSidebarTabs] = useState([]);
+
+  useEffect(() => {
+    if (userRole === 'patient') {
+      setFilterSidebarTabs(sidebarTabs.filter((tab) => tab.id !== 'Caregiver'));
+    }
+  }, [userRole]);
+
+  // On mount, restore today's intake from localStorage, and handle new day logic
+  useEffect(() => {
+    // Only run this effect once on mount
+    if (didInit.current) return;
+    didInit.current = true;
+
+    const currentDay = getTodayString();
+    setToday(currentDay);
+
+    // Load water history from localStorage
+    let history = {};
+    try {
+      const saved = localStorage.getItem('Water-Intake-History');
+      history = saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      history = {};
+    }
+
+    // Check for yesterday's completion
+    const yesterday = getYesterdayString();
+    if (history[yesterday] && !history[yesterday].messageShown) {
+      if (history[yesterday].total >= dailyGoal) {
+        setYesterdayMessage("Yesterday you have completed your daily intake goal of water. Great job!");
+      } else {
+        setYesterdayMessage("Yesterday you did not complete your daily intake goal of water. Try to do better today!");
+      }
+      // Mark message as shown
+      history[yesterday].messageShown = true;
+      localStorage.setItem('Water-Intake-History', JSON.stringify(history));
+    } else {
+      setYesterdayMessage('');
+    }
+
+    // If today is not present in history, initialize it
+    if (!history[currentDay]) {
+      history[currentDay] = { total: 0, completed: false, messageShown: false };
+      setTotalWaterIntake(0);
+      setPercentage(0);
+      setCongModal(false);
+    } else {
+      setTotalWaterIntake(history[currentDay].total);
+      setPercentage(Math.min((history[currentDay].total / dailyGoal) * 100, 100));
+      setCongModal(history[currentDay].completed);
+    }
+    setWaterHistory(history);
+    // Save to localStorage to ensure consistency
+    localStorage.setItem('Water-Intake-History', JSON.stringify(history));
+    // eslint-disable-next-line
+  }, [medicalConditionRelatedData]);
+
+  // When day changes (e.g. at midnight), reset intake for new day
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = getTodayString();
+      if (now !== today) {
+        // New day detected
+        setToday(now);
+
+        // Load water history from localStorage
+        let history = {};
+        try {
+          const saved = localStorage.getItem('Water-Intake-History');
+          history = saved ? JSON.parse(saved) : {};
+        } catch (e) {
+          history = {};
+        }
+
+        // Add new day if not present
+        if (!history[now]) {
+          history[now] = { total: 0, completed: false, messageShown: false };
+        }
+        setWaterHistory(history);
+        setTotalWaterIntake(0);
+        setPercentage(0);
+        setCongModal(false);
+        setYesterdayMessage('');
+        localStorage.setItem('Water-Intake-History', JSON.stringify(history));
+      }
+    }, 60 * 1000); // check every minute
+    return () => clearInterval(interval);
+    // eslint-disable-next-line
+  }, [today]);
+
+  // Handle water intake submission
+  const handleWaterFunction = (e) => {
+    e.preventDefault();
+    const currentDay = getTodayString();
+    let history = { ...waterHistory };
+    const newTotal = Number(history[currentDay]?.total || 0) + Number(waterInput);
+
+    history[currentDay] = {
+      ...history[currentDay],
+      total: newTotal,
+      completed: newTotal >= dailyGoal,
+      messageShown: history[currentDay]?.messageShown || false,
+    };
+
+    setWaterHistory(history);
+    setTotalWaterIntake(newTotal);
+    setPercentage(Math.min((newTotal / dailyGoal) * 100, 100));
+    setCongModal(newTotal >= dailyGoal);
+
+    // Save to localStorage
+    localStorage.setItem('Water-Intake-History', JSON.stringify(history));
+  };
+
+  // Save today's intake and percentage to localStorage on change
+  useEffect(() => {
+    const currentDay = getTodayString();
+    let history = { ...waterHistory };
+    if (history[currentDay]) {
+      history[currentDay].total = totalWaterIntake;
+      history[currentDay].completed = totalWaterIntake >= dailyGoal;
+      setWaterHistory(history);
+      localStorage.setItem('Water-Intake-History', JSON.stringify(history));
+    }
+    // eslint-disable-next-line
+  }, [totalWaterIntake, percentage]);
 
   const handleLogOut = () => {
     localStorage.removeItem('User-Data-Information');
@@ -62,38 +205,13 @@ function WaterIntakeComponent() {
       draggable: true,
       progress: undefined,
     });
-  }
-  const [filterSideBarTabs,setFilterSidebarTabs] = useState([]);
+  };
 
-    useEffect(()=>{
-        if(userRole === 'patient'){
-            setFilterSidebarTabs(sidebarTabs.filter((tab) => tab.id !== 'Caregiver'));
-        }
-    },[userRole])
-  let dailyGoal = JSON.parse(localStorage.getItem("MedicalConditions-Related-Data"));
-
-
-  const handleWaterFunction = (e) => {
-    e.preventDefault();
-    const newTotal = Number(totalWaterIntake) + Number(waterInput);
-    setTotalWaterIntake(newTotal);
-    setPercentage(Math.min((newTotal / medicalConditionRelatedData?.WaterIntake) * 100, 100));
-
-    if (newTotal === Number(medicalConditionRelatedData?.WaterIntake)) {
-      setCongModal(true);
-    }
-
-  }
-
-  useEffect(() => {
-    localStorage.setItem('Total-Water-Intake', JSON.stringify(totalWaterIntake))
-    localStorage.setItem('Total-Percentage', JSON.stringify(percentage))
-  }, [totalWaterIntake])
-
-
-
-
-
+  const data = [
+    { name: "Tea/Coffee", value: 19 },
+    { name: "Milk based", value: 41 },
+    { name: "Other", value: 39 },
+  ];
 
   const COLORS = ["#8B5CF6", "#F87171", "#06B6D4"];
 
@@ -243,44 +361,38 @@ function WaterIntakeComponent() {
                   </div>
                 </div>
 
-                {/* Hydration Widget */}
                 <div className="bg-white rounded-xl p-6 h-[270px] w-[230px] shadow-lg">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center">
-                      <FaRegLemon className="text-yellow-400 text-xl mr-2" />
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="w-6 h-6 mr-2 inline-block"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="orange"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <circle cx="12" cy="12" r="10" stroke="orange" fill="#fffbe6"/>
+                        <path d="M12 6v6l4 2" stroke="orange" />
+                        <path d="M12 2v2" stroke="orange" />
+                        <path d="M12 20v2" stroke="orange" />
+                        <path d="M2 12h2" stroke="orange" />
+                        <path d="M20 12h2" stroke="orange" />
+                      </svg>
                       <h3 className="font-semibold text-gray-800">Daily Goal</h3>
                     </div>
                   </div>
                   <div className="text-center">
                     <div className="relative w-20 h-20 mx-auto mb-3">
-                      <svg className="w-40 h-40 -ml-10 transform -rotate-90" viewBox="0 0 36 36">
-                        <circle
-                          cx="18"
-                          cy="18"
-                          r="16"
-                          fill="none"
-                          stroke="#e5e7eb"
-                          strokeWidth="3"
-                        />
-                        <circle
-                          cx="18"
-                          cy="18"
-                          r="16"
-                          fill="none"
-                          stroke="#10B981"
-                          strokeWidth="3"
-                          strokeDasharray={`${medicalConditionRelatedData?.WaterIntake * 1.005}, 100`}
-                          strokeLinecap="round"
-                        />
-                      </svg>
-
-                      <div className="absolute inset-0 flex  top-[55px] items-center justify-center">
-                        <span className="text-3xl font-bold text-gray-800">{medicalConditionRelatedData?.WaterIntake} L</span>
+                      <img src={goal} className="w-full mt-16 h-full scale-[250%] object-contain" />
+                      <div className="absolute w-[30px] left-5 h-[30px] p-5 flex items-center justify-center bg-white rounded-full  inset-0 top-[20px]">
+                        <span className="text-3xl font-bold text-gray-800">{dailyGoal}</span>
                       </div>
                     </div>
                   </div>
                 </div>
-
 
                 {/* Oxygen Saturation Widget */}
                 <div className="bg-white rounded-xl p-6 h-[270px] w-[230px] shadow-lg">
@@ -292,29 +404,8 @@ function WaterIntakeComponent() {
                   </div>
                   <div className="text-center">
                     <div className="relative w-20 h-20 mx-auto mb-3">
-                      {/* Circular Progress Bar for Oxygen Saturation */}
-                      <svg className="w-40 h-40 -ml-10 transform -rotate-90" viewBox="0 0 36 36">
-                        <circle
-                          cx="18"
-                          cy="18"
-                          r="16"
-                          fill="none"
-                          stroke="#e5e7eb"
-                          strokeWidth="3"
-                        />
-                        <circle
-                          cx="18"
-                          cy="18"
-                          r="16"
-                          fill="none"
-                          stroke="orange"
-                          strokeWidth="3"
-                          strokeDasharray={`${Number(medicalConditionRelatedData?.WaterIntake - totalWaterIntake) * 1.005}, 100`}
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      <div className="absolute inset-0 top-[55px]">
-                        <span className="text-3xl font-bold text-gray-800">{Number(medicalConditionRelatedData?.WaterIntake - totalWaterIntake)}</span>
+                      <div className="absolute inset-0 top-[48px]">
+                        <span className="text-4xl font-bold text-gray-800">{Math.max(dailyGoal - totalWaterIntake, 0)}L</span>
                       </div>
                     </div>
                   </div>
@@ -328,7 +419,28 @@ function WaterIntakeComponent() {
 
             <div className='h-full w-[37%]'>
               <div className='h-[300px] bg-white rounded-lg shadow-lg'>
-                {congModal ? (
+                {/* Show yesterday's completion message if available */}
+                {yesterdayMessage ? (
+                  <div className="flex flex-col items-center justify-center h-full p-8">
+                    <div className="flex flex-col items-center">
+                      <svg
+                        width="80"
+                        height="80"
+                        viewBox="0 0 80 80"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="mb-4"
+                      >
+                        <circle cx="40" cy="40" r="40" fill="#FDE68A"/>
+                        <path d="M24 42L36 54L56 34" stroke="#F59E42" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      <h2 className="text-2xl font-bold text-yellow-600 mb-2 text-center">Yesterday's Report</h2>
+                      <p className="text-gray-700 text-lg text-center mb-4">
+                        {yesterdayMessage}
+                      </p>
+                    </div>
+                  </div>
+                ) : congModal ? (
                   <div className="flex flex-col items-center justify-center h-full p-8">
                     <div className="flex flex-col items-center">
                       <svg
@@ -456,13 +568,7 @@ function WaterIntakeComponent() {
       ) : (activeTab === 'Settings') ? (
         <SettingsComponent />
       ) : null}
-
-
-
-
     </div>
-
-
   )
 }
 

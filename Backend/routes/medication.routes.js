@@ -1,7 +1,7 @@
 import express from 'express'
 import { authMiddleware } from '../middlewares/auth.middleware.js';
 import { body } from 'express-validator';
-import { addNewMedicationController, deleteMedicationController, getAllMedicationController, getAllMedicationControllerByDate, isTakenMEdicationController, updateExistingMedicationController, getMedicationsWithReminderStatusController } from '../controllers/medication.controller.js';
+import { addNewMedicationController, deleteMedicationController, getAllMedicationController, getAllMedicationControllerByDate, isTakenMEdicationController, updateExistingMedicationController } from '../controllers/medication.controller.js';
 const router = express.Router();
 
 router.post('/addNewMedication',authMiddleware,[
@@ -34,7 +34,5 @@ router.delete('/deleteMedication/:medicationId',authMiddleware,deleteMedicationC
 router.patch('/markAsTaken/:medicationId', authMiddleware,isTakenMEdicationController);
 
 router.post('/getMedicationLog/:date', authMiddleware, getAllMedicationControllerByDate);
-
-router.get('/with-reminder-status', authMiddleware, getMedicationsWithReminderStatusController);
 
 export default router;

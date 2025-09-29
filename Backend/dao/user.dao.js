@@ -1,6 +1,6 @@
 import userModel from "../models/user.model.js";
 
-export const registerNewUser = async (fullName,email,hashedPassword,age) => {
+export const registerNewUser = async (fullName,email,hashedPassword,age, username) => {
     const newUser = await new userModel({
         fullName:{
             firstName: fullName.firstName,
@@ -8,7 +8,8 @@ export const registerNewUser = async (fullName,email,hashedPassword,age) => {
         },
         email: email,
         password: hashedPassword,
-        age: age
+        age: age,
+        username: username
     }).save();
 
     if(!newUser) {

@@ -105,6 +105,7 @@ function OnboardingPageComponent() {
         localStorage.setItem('Health-Related-Data',JSON.stringify(vitalSigns));
         localStorage.setItem('MedicalConditions-Related-Data',JSON.stringify(medicalConditions));
         localStorage.setItem("User-Role",JSON.stringify(basicInfo.Role));
+        localStorage.setItem('Fitness-Related-Data',JSON.stringify(fitness));
         navigate('/dashboard')
     };
 

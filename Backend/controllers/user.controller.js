@@ -4,7 +4,8 @@ import { validationResultUtil } from "../utlis/validationResult.util.js";
 
 export const  userRegistrationController = async (req,res) => {
     console.log("Hello");
-    await validationResultUtil(req, res);
+    const validationErrorResponse = await validationResultUtil(req, res);
+    if (validationErrorResponse) return; 
     try{
         const {fullName,email,password,age} = req.body;
         console.log(req.body);
@@ -14,6 +15,13 @@ export const  userRegistrationController = async (req,res) => {
                 message: 'All fields are required'
             })
         }
+        // Derive username from fullName if not provided
+        let username = req.body.username;
+        if (!username && fullName && typeof fullName === 'object') {
+            const first = fullName.firstName || '';
+            const last = fullName.lastName || '';
+            username = `${first}${last ? '_' + last : ''}`.toLowerCase();
+        }
         
         const hashedPassword = await userModel.hashedPassword(password);
         if(!hashedPassword){
@@ -22,13 +30,14 @@ export const  userRegistrationController = async (req,res) => {
             })
         }
         
-        const newUser = await registerNewUser(fullName,email,hashedPassword,age);
+        const newUser = await registerNewUser(fullName,email,hashedPassword,age, username);
 
         if(!newUser){
             return res.status(400).json({
                 message: 'User registration failed'
             })
         }
+        console.log(newUser);
         return res.status(200).json({
             message:'User registered successfully',
             newUser

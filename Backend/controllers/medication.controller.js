@@ -1,7 +1,6 @@
 import { addNewMedicationDao, deleteMedicationDao, getAllMedicationDao, isTakenMedicationDao, updateMedicationDao, getMedicationsWithReminderStatusDao } from "../dao/medication.dao.js";
 import medicationModel from "../models/medication.model.js";
 import { validationResultUtil } from "../utlis/validationResult.util.js"
-import { reminderScheduler } from "../services/reminderScheduler.service.js";
 
 export const addNewMedicationController = async (req, res) => {
     await validationResultUtil(req, res);

@@ -77,7 +77,7 @@ export default function SleepLoggerCounter() {
   });
   const [activeTab, setActiveTab] = useState('Sleep Logger');
   const [totalSleepAmt,setTotalSleepAmt] = useState(0);
-  const [totalDailySleepAmt,setTotalDailySleepAmt] = useState(0);
+  const [,set] = useState(0);
   const userRole = JSON.parse(localStorage.getItem('User-Role'));
   const handleLogOut = () => {
     localStorage.removeItem('User-Data-Information');
@@ -114,19 +114,32 @@ const [filterSideBarTabs,setFilterSidebarTabs] = useState([]);
     if (isNaN(totalHrsNum) || isNaN(totalTimeNum)) {
       setTotalSleepAmt(0);
     } else {
-      setTotalSleepAmt(`${totalHrsNum} : ${totalTimeNum}`);
+      const positiveAmt = Math.abs(totalHrsNum) + Math.abs(totalTimeNum);
+      setTotalSleepAmt(`${positiveAmt}`);
     }
   },[isWakingDate])
 
   useEffect(()=>{
     const t = Number(isWakingDate?.split(':')[0]) - Number(isSleepingDate?.split(':')[0]);
-    setTotalDailySleepAmt((prev) => {
+    set((prev) => {
       const prevVal = isNaN(Number(prev)) ? 0 : Number(prev);
       const tVal = isNaN(Number(t)) ? 0 : Number(t);
       return prevVal + tVal;
     });
   },[isWakingDate])
 
+  const [dailySleepGoal,setDailySleepGoal] = useState(()=>{
+    const savedSleepGoal = localStorage.getItem('Fitness-Related-Data');
+    return savedSleepGoal ? JSON.parse(savedSleepGoal) : 8 ;
+  });
+
+
+  const [totalSleepRemaining,setTotalSleepRemaining] = useState(0);
+
+  useEffect(()=>{
+    const sleepAmt = Number(dailySleepGoal?.AverageSleep) - Number(totalSleepAmt);
+    setTotalSleepRemaining(sleepAmt); 
+  },[totalSleepAmt])
 
   return (
    <div className="flex">
@@ -261,8 +274,7 @@ const [filterSideBarTabs,setFilterSidebarTabs] = useState([]);
                     <div className="text-center">
                       <div className="relative w-20 h-20 mx-auto mb-3">
                         <div className="absolute inset-0 flex gap-3 top-[65px] items-center justify-center">
-                          <span className="text-3xl font-bold text-gray-800">{totalDailySleepAmt} 
-                            
+                          <span className="text-3xl font-bold text-gray-800">{dailySleepGoal?.AverageSleep}
                             <br/>
                           </span>
                           <span className="text-md font-bold text-zinc-400">HRS</span>
@@ -282,29 +294,9 @@ const [filterSideBarTabs,setFilterSidebarTabs] = useState([]);
                     </div>
                     <div className="text-center">
                       <div className="relative w-20 h-20 mx-auto mb-3">
-                        {/* Circular Progress Bar for Oxygen Saturation */}
-                        <svg className="w-40 h-40 -ml-10 transform -rotate-90" viewBox="0 0 36 36">
-                          <circle
-                            cx="18"
-                            cy="18"
-                            r="16"
-                            fill="none"
-                            stroke="#e5e7eb"
-                            strokeWidth="3"
-                          />
-                          <circle
-                            cx="18"
-                            cy="18"
-                            r="16"
-                            fill="none"
-                            stroke="orange"
-                            strokeWidth="3"
-                            strokeDasharray={`${50 * 1.005}, 100`}
-                            strokeLinecap="round"
-                          />
-                        </svg>
-                        <div className="absolute inset-0 top-[55px]">
-                          <span className="text-3xl font-bold text-gray-800">300</span>
+                        <div className="absolute inset-0 top-[55px] flex items-center justify-center gap-4">
+                          <span className="text-3xl font-bold text-gray-800">{totalSleepRemaining}</span>
+                          <span className="text-md font-bold text-zinc-400">HRS</span>  
                         </div>
                       </div>
                     </div>

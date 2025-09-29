@@ -36,7 +36,49 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { UserContext } from '../utils/UserContextComponent'
 import { toast } from 'react-toastify'
 import profile from '../Animations/profileImage.jpg'
+import confetti from 'canvas-confetti';
 
+
+// Month names for X axis and data
+const MONTHS = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+];
+
+// Weekday names for weekly chart
+const WEEK_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function getWeeksInMonth(year, month) {
+    // Returns an array of { label, value, days: [dates] }
+    const weeks = [];
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    let current = new Date(firstDay);
+    let weekIndex = 1;
+    while (current <= lastDay) {
+        const weekStart = new Date(current);
+        const weekEnd = new Date(current);
+        weekEnd.setDate(weekEnd.getDate() + (6 - weekEnd.getDay()));
+        if (weekEnd > lastDay) weekEnd.setDate(lastDay.getDate());
+        // Collect all days in this week
+        const days = [];
+        let dayIter = new Date(weekStart);
+        while (dayIter <= weekEnd && dayIter.getMonth() === month) {
+            days.push(new Date(dayIter));
+            dayIter.setDate(dayIter.getDate() + 1);
+        }
+        weeks.push({
+            label: `Week ${weekIndex} (${weekStart.getDate()}-${weekEnd.getDate()})`,
+            value: `${year}-${month + 1}-${weekIndex}`,
+            days,
+            weekIndex
+        });
+        weekIndex++;
+        current = new Date(weekEnd);
+        current.setDate(current.getDate() + 1);
+    }
+    return weeks;
+}
 
 function DashboardComponent({ children }) {
     const navigate = useNavigate();
@@ -49,7 +91,15 @@ function DashboardComponent({ children }) {
     const [currentGoal, setCurrentGoal] = useState('');
     const userRole = JSON.parse(localStorage.getItem('User-Role'));
     const { user, setUser } = useContext(UserContext);
+    const [chartRange, setChartRange] = useState("month"); // "month" or "week"
+    const [selectedChart, setSelectedChart] = useState("heartRate"); // "heartRate", "pulse", "temperature", "bloodSugar"
+    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+    const [selectedWeek, setSelectedWeek] = useState(""); // week value string
+    const [monthlyDataFiltered, setMonthlyDataFiltered] = useState([]);
+    const [weeklyDataFiltered, setWeeklyDataFiltered] = useState([]);
+    const [availableWeeks, setAvailableWeeks] = useState([]);
 
+    // Sidebar tabs
     const sidebarTabs = [
         { id: 'Dashboard', icon: FaHome, label: 'Dashboard' },
         { id: 'Water Intake', icon: FaTint, label: 'Water Intake' },
@@ -62,63 +112,138 @@ function DashboardComponent({ children }) {
         { id: 'Settings', icon: FaCog, label: 'Settings' },
     ]
 
+    // Monthly data for each attribute
+    const [monthlyData, setMonthlyData] = useState(() =>
+        MONTHS.map((month, idx) => ({
+            month,
+            heartRate: 0,
+            pulse: 0,
+            temperature: 0,
+            bloodSugar: 0
+        }))
+    );
 
+    // Simulated daily data for weekly chart (for demo)
+    // In real app, fetch this from backend or localStorage
+    const [dailyData, setDailyData] = useState(() => {
+        // For each day in the current month, generate random data
+        const year = new Date().getFullYear();
+        const month = new Date().getMonth();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        let arr = [];
+        for (let d = 1; d <= daysInMonth; d++) {
+            arr.push({
+                date: new Date(year, month, d),
+                day: WEEK_DAYS[new Date(year, month, d).getDay()],
+                heartRate: 70 + Math.floor(Math.random() * 30),
+                pulse: 65 + Math.floor(Math.random() * 20),
+                temperature: 97 + Math.random() * 3,
+                bloodSugar: 90 + Math.floor(Math.random() * 40)
+            });
+        }
+        return arr;
+    });
 
-
-    const [weeks, setWeeks] = useState([
-        // Dynamically generate weeks based on the current month
-        ...(() => {
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = now.getMonth();
-            // Get the first and last day of the month
-            const firstDay = new Date(year, month, 1);
-            const lastDay = new Date(year, month + 1, 0);
-            // Calculate the week number for the first and last day
-            // Week starts on Sunday (0)
-            const getWeekOfMonth = (date) => {
-                const firstDayOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
-                const dayOfWeek = firstDayOfMonth.getDay();
-                // Calculate offset for the first week
-                return Math.ceil((date.getDate() + dayOfWeek) / 7);
-            };
-            const totalWeeks = getWeekOfMonth(lastDay);
-            // Generate week objects
-            return Array.from({ length: totalWeeks }, (_, i) => ({
-                week: `Week ${i + 1}`,
-                heartRate: 0,
-                pulse: 0,
-                temperature: 0,
-                bloodSugar: 0
-            }));
-        })()
-    ]);
-
-    // Handler to update a week's value based on user input
-    const handleWeekValueChange = (weekIndex, attribute, newValue) => {
-        setWeeks(prevWeeks =>
-            prevWeeks.map((w, idx) =>
-                idx === weekIndex ? { ...w, [attribute]: Number(newValue) } : w
+    // Handler to update a month's value based on user input
+    const handleMonthValueChange = (monthIndex, attribute, newValue) => {
+        setMonthlyData(prev =>
+            prev.map((m, idx) =>
+                idx === monthIndex ? { ...m, [attribute]: Number(newValue) } : m
             )
         );
     };
 
-    useEffect(()=>{
-        handleWeekValueChange(2, 'heartRate', 127);//calls with values 
-        handleWeekValueChange(4, 'pulse', 80);//calls with values 
-        handleWeekValueChange(1, 'temperature', 98.6);//calls with values 
-        handleWeekValueChange(3, 'bloodSugar', 110);//calls with values 
-    },[])
+
+    // Example: Set some demo values for demonstration
+    useEffect(() => {
+        handleMonthValueChange(0, 'heartRate', 75); // Jan
+        handleMonthValueChange(1, 'heartRate', 80); // Feb
+        handleMonthValueChange(2, 'heartRate', 90); // Mar
+        handleMonthValueChange(3, 'heartRate', 85); // Apr
+
+        handleMonthValueChange(0, 'pulse', 70);
+        handleMonthValueChange(1, 'pulse', 72);
+        handleMonthValueChange(2, 'pulse', 74);
+        handleMonthValueChange(3, 'pulse', 76);
+
+        handleMonthValueChange(0, 'temperature', 98.2);
+        handleMonthValueChange(1, 'temperature', 98.6);
+        handleMonthValueChange(2, 'temperature', 99.1);
+        handleMonthValueChange(3, 'temperature', 98.7);
+
+        handleMonthValueChange(0, 'bloodSugar', 100);
+        handleMonthValueChange(1, 'bloodSugar', 110);
+        handleMonthValueChange(2, 'bloodSugar', 120);
+        handleMonthValueChange(3, 'bloodSugar', 115);
+    }, []);
+
+    // Filter monthly data for selected month
+    useEffect(() => {
+        setMonthlyDataFiltered(monthlyData);
+    }, [monthlyData]);
+
+    // Generate available weeks for selected month
+    useEffect(() => {
+        const year = new Date().getFullYear();
+        const weeks = getWeeksInMonth(year, selectedMonth);
+        setAvailableWeeks(weeks);
+        // Set default selected week to first week if not set
+        if (weeks.length > 0 && (selectedWeek === "" || !weeks.some(w => w.value === selectedWeek))) {
+            setSelectedWeek(weeks[0].value);
+        }
+    }, [selectedMonth]);
+
+    // Filter daily data for selected week
+    useEffect(() => {
+        if (chartRange === "week" && selectedWeek && availableWeeks.length > 0) {
+            const weekObj = availableWeeks.find(w => w.value === selectedWeek);
+            if (weekObj) {
+                // For each day in the week, find the dailyData entry or fill with nulls
+                const weekDaysData = weekObj.days.map(dateObj => {
+                    const found = dailyData.find(d =>
+                        d.date.getDate() === dateObj.getDate() &&
+                        d.date.getMonth() === dateObj.getMonth() &&
+                        d.date.getFullYear() === dateObj.getFullYear()
+                    );
+                    return found
+                        ? {
+                            ...found,
+                            day: WEEK_DAYS[dateObj.getDay()]
+                        }
+                        : {
+                            date: dateObj,
+                            day: WEEK_DAYS[dateObj.getDay()],
+                            heartRate: null,
+                            pulse: null,
+                            temperature: null,
+                            bloodSugar: null
+                        };
+                });
+                setWeeklyDataFiltered(weekDaysData);
+            }
+        }
+    }, [chartRange, selectedWeek, availableWeeks, dailyData]);
+
+    // For monthly chart, just use monthlyData
+    useEffect(() => {
+        if (chartRange === "month") {
+            setMonthlyDataFiltered(monthlyData);
+        }
+    }, [chartRange, monthlyData]);
 
     const handleGoalSubmit = (e) => {
         e.preventDefault()
-        console.log(currentGoal)
         if (currentGoal === '') {
             alert("Write Something..");
             return;
         }
 
         setGoalInput((prev) => [...prev, currentGoal]);
+        confetti({
+            particleCount: 150,
+            spread: 80,
+            origin: { y: 0.6 },
+        });
         setCurrentGoal('');
     }
 
@@ -138,15 +263,15 @@ function DashboardComponent({ children }) {
             progress: undefined,
         });
     }
-    const [filterSideBarTabs,setFilterSidebarTabs] = useState([]);
+    const [filterSideBarTabs, setFilterSidebarTabs] = useState([]);
 
-    useEffect(()=>{
-        if(userRole === 'patient'){
+    useEffect(() => {
+        if (userRole === 'patient') {
             setFilterSidebarTabs(sidebarTabs.filter((tab) => tab.id !== 'Caregiver'));
         } else {
             setFilterSidebarTabs(sidebarTabs);
         }
-    },[userRole])
+    }, [userRole])
 
     return (
         <div className="flex h-screen bg-gray-50">
@@ -436,98 +561,127 @@ function DashboardComponent({ children }) {
                                         <h3 className="text-xl font-bold text-gray-800 mb-4 md:mb-0">Health Statistics</h3>
                                         <div className="flex items-center">
                                             {(() => {
-                                                const months = [
-                                                    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-                                                ];
                                                 const currentMonthIdx = new Date().getMonth();
                                                 return (
                                                     <>
                                                         <span className="text-gray-500 text-sm font-bold">
-                                                            {months[currentMonthIdx]} {new Date().getDate()}, {new Date().getFullYear()}
+                                                            {MONTHS[currentMonthIdx]} {new Date().getDate()}, {new Date().getFullYear()}
                                                         </span>
                                                     </>
                                                 );
                                             })()}
                                         </div>
                                     </div>
-                                    {/* Health Statistics Chart Area */}
+                                    {/* Health Statistics Chart Area with Time Range Selector */}
                                     <div className="space-y-6">
-                                        {/* Heart Rate Chart */}
-                                        <div className="bg-gray-50 rounded-lg p-4">
-                                            <h4 className="text-lg font-semibold text-gray-700 mb-3">Heart Rate (BPM)</h4>
-                                            <ResponsiveContainer width="100%" height={200}>
-                                                <LineChart data={weeks} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" />
-                                                    <XAxis dataKey="week" />
-                                                    <YAxis domain={[60, 100]} />
-                                                    <Tooltip />
-                                                    <Line
-                                                        type="monotone"
-                                                        dataKey="heartRate"
-                                                        stroke="#ef4444"
-                                                        strokeWidth={3}
-                                                        dot={{ r: 5 }}
-                                                    />
-                                                </LineChart>
-                                            </ResponsiveContainer>
+                                        {/* Chart Time Range Selector */}
+                                        <div className="flex items-center mb-4 gap-4">
+                                            <label htmlFor="chartRange" className="font-semibold text-gray-700">
+                                                View By:
+                                            </label>
+                                            <select
+                                                id="chartRange"
+                                                className="border px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                value={chartRange}
+                                                onChange={e => setChartRange(e.target.value)}
+                                            >
+                                                <option value="month">Month</option>
+                                                <option value="week">Week</option>
+                                            </select>
+                                            {/* If week is selected, show week picker */}
+                                            {chartRange === "week" && (
+                                                <select
+                                                    className="border px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ml-2"
+                                                    value={selectedWeek}
+                                                    onChange={e => setSelectedWeek(e.target.value)}
+                                                >
+                                                    {availableWeeks.map((week, idx) => (
+                                                        <option key={week.value} value={week.value}>
+                                                            {week.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                            {/* If month is selected, show month picker */}
+                                            {chartRange === "month" && (
+                                                <select
+                                                    className="border px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ml-2"
+                                                    value={selectedMonth}
+                                                    onChange={e => setSelectedMonth(Number(e.target.value))}
+                                                >
+                                                    {MONTHS.map((m, idx) => (
+                                                        <option key={m} value={idx}>
+                                                            {m}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            )}
                                         </div>
 
-                                        {/* Pulse Chart */}
-                                        <div className="bg-gray-50 rounded-lg p-4">
-                                            <h4 className="text-lg font-semibold text-gray-700 mb-3">Pulse (BPM)</h4>
-                                            <ResponsiveContainer width="100%" height={200}>
-                                                <LineChart data={weeks} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" />
-                                                    <XAxis dataKey="week" />
-                                                    <YAxis domain={[60, 100]} />
-                                                    <Tooltip />
-                                                    <Line
-                                                        type="monotone"
-                                                        dataKey="pulse"
-                                                        stroke="#3b82f6"
-                                                        strokeWidth={3}
-                                                        dot={{ r: 5 }}
-                                                    />
-                                                </LineChart>
-                                            </ResponsiveContainer>
+                                        {/* Chart Type Selector */}
+                                        <div className="flex items-center mb-4 gap-4">
+                                            <label htmlFor="chartType" className="font-semibold text-gray-700">
+                                                Select Chart:
+                                            </label>
+                                            <select
+                                                id="chartType"
+                                                className="border px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                value={selectedChart}
+                                                onChange={e => setSelectedChart(e.target.value)}
+                                            >
+                                                <option value="heartRate">Heart Rate</option>
+                                                <option value="pulse">Pulse (BPM)</option>
+                                                <option value="temperature">Temperature (°F)</option>
+                                                <option value="bloodSugar">Blood Sugar (mg/dL)</option>
+                                            </select>
                                         </div>
 
-                                        {/* Temperature Chart */}
+                                        {/* Chart Display */}
                                         <div className="bg-gray-50 rounded-lg p-4">
-                                            <h4 className="text-lg font-semibold text-gray-700 mb-3">Temperature (°F)</h4>
+                                            <h4 className="text-lg font-semibold text-gray-700 mb-3">
+                                                {selectedChart === "heartRate" && "Heart Rate"}
+                                                {selectedChart === "pulse" && "Pulse (BPM)"}
+                                                {selectedChart === "temperature" && "Temperature (°F)"}
+                                                {selectedChart === "bloodSugar" && "Blood Sugar (mg/dL)"}
+                                            </h4>
                                             <ResponsiveContainer width="100%" height={200}>
-                                                <LineChart data={weeks} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                                <LineChart
+                                                    data={chartRange === "month" ? monthlyDataFiltered : weeklyDataFiltered}
+                                                    margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                                                >
                                                     <CartesianGrid strokeDasharray="3 3" />
-                                                    <XAxis dataKey="week" />
-                                                    <YAxis domain={[95, 102]} />
-                                                    <Tooltip />
-                                                    <Line
-                                                        type="monotone"
-                                                        dataKey="temperature"
-                                                        stroke="#f59e0b"
-                                                        strokeWidth={3}
-                                                        dot={{ r: 5 }}
+                                                    <XAxis
+                                                        dataKey={chartRange === "month" ? "month" : "day"}
+                                                        tickFormatter={chartRange === "week"
+                                                            ? (tick) => tick
+                                                            : undefined
+                                                        }
                                                     />
-                                                </LineChart>
-                                            </ResponsiveContainer>
-                                        </div>
-
-                                        {/* Blood Sugar Chart */}
-                                        <div className="bg-gray-50 rounded-lg p-4">
-                                            <h4 className="text-lg font-semibold text-gray-700 mb-3">Blood Sugar (mg/dL)</h4>
-                                            <ResponsiveContainer width="100%" height={200}>
-                                                <LineChart data={weeks} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" />
-                                                    <XAxis dataKey="week" />
-                                                    <YAxis domain={[80, 140]} />
+                                                    <YAxis
+                                                        domain={
+                                                            selectedChart === "heartRate" || selectedChart === "pulse"
+                                                                ? [60, 120]
+                                                                : selectedChart === "temperature"
+                                                                    ? [95, 102]
+                                                                    : [80, 140]
+                                                        }
+                                                    />
                                                     <Tooltip />
                                                     <Line
                                                         type="monotone"
-                                                        dataKey="bloodSugar"
-                                                        stroke="#10b981"
+                                                        dataKey={selectedChart}
+                                                        stroke={
+                                                            selectedChart === "heartRate"
+                                                                ? "#ef4444"
+                                                                : selectedChart === "pulse"
+                                                                    ? "#3b82f6"
+                                                                    : selectedChart === "temperature"
+                                                                        ? "#f59e0b"
+                                                                        : "#10b981"
+                                                        }
                                                         strokeWidth={3}
                                                         dot={{ r: 5 }}
+                                                        connectNulls
                                                     />
                                                 </LineChart>
                                             </ResponsiveContainer>
@@ -663,9 +817,6 @@ function DashboardComponent({ children }) {
                 ) : (activeTab === 'Settings') ? (
                     <SettingsComponent />
                 ) : null}
-
-
-
             </div>
         </div>
     )

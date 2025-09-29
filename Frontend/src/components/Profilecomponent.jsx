@@ -35,6 +35,7 @@ function Profilecomponent() {
                     Authorization: `Bearer ${token}`
                 }
             })
+            console.log(profile);
             setPatientData(profile?.data?.user);
         } catch (err) {
             console.log(err);
@@ -216,7 +217,7 @@ function Profilecomponent() {
                                         <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-2">
                                             <span className="flex items-center gap-1">
                                                 <FaHeart className="text-red-400" />
-                                                {patientData.age} years • {patientData.gender || "Not specified"}
+                                                 {patientData.age} years • {patientData.gender || "Not specified"}
                                             </span>
                                             <span className="flex items-center gap-1">
                                                 <FaShieldAlt className="text-blue-400" />

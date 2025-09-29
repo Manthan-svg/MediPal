@@ -32,6 +32,75 @@ const userSchema = new Schema({
         type:Number,
         min:[0, 'Age must be a positive number'],
         default: 0
+    },
+    username: {
+        type: String,
+        unique: true,
+        required: true
+    },
+    phoneNumber: {
+        type: String,
+        default: ''
+    },
+    deviceToken: {
+        type: String,
+        default: ''
+    },
+    webhookUrl: {
+        type: String,
+        default: ''
+    },
+    notificationPreferences: {
+        email: {
+            type: Boolean,
+            default: true
+        },
+        sms: {
+            type: Boolean,
+            default: false
+        },
+        push: {
+            type: Boolean,
+            default: true
+        },
+        inApp: {
+            type: Boolean,
+            default: true
+        },
+        webhook: {
+            type: Boolean,
+            default: false
+        },
+        medicationReminders: {
+            type: Boolean,
+            default: true
+        },
+        missedMedicationAlerts: {
+            type: Boolean,
+            default: true
+        },
+        goalAchievements: {
+            type: Boolean,
+            default: true
+        },
+        generalNotifications: {
+            type: Boolean,
+            default: true
+        },
+        quietHours: {
+            enabled: {
+                type: Boolean,
+                default: false
+            },
+            start: {
+                type: String,
+                default: '22:00'
+            },
+            end: {
+                type: String,
+                default: '08:00'
+            }
+        }
     }
 })
 
