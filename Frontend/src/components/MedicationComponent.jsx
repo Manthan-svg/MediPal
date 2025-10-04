@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { FaBed, FaCog, FaHome, FaPills, FaRobot, FaSearch, FaSignOutAlt, FaTint, FaUserFriends, FaWalking } from 'react-icons/fa';
+import { FaBed, FaCog, FaHome, FaPills, FaRobot, FaSearch, FaSignOutAlt, FaTint, FaUserFriends, FaWalking, FaBell, FaBellSlash } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import SettingsComponent from './SettingsComponent';
 import axios from '../utils/Axios.Config'
 import { UserContext } from '../utils/UserContextComponent';
 import { toast } from 'react-toastify';
+import notificationService from '../services/NotificationService';
 
 function MedicationComponent() {
   const { user, setUser, token, setToken } = useContext(UserContext)
@@ -20,6 +21,9 @@ function MedicationComponent() {
   const [showTimetable, setShowTimetable] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteMedicationId, setDeleteMedicationId] = useState(null);
+  const [notificationStatus, setNotificationStatus] = useState({});
+  const [showNotificationPanel, setShowNotificationPanel] = useState(false);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [medications, setMedications] = useState(() => {
     const savedMedications = localStorage.getItem('All-Medications');
     if (savedMedications) {
@@ -105,12 +109,35 @@ function MedicationComponent() {
     handleMedication()
   }, [])
 
-
   useEffect(() => {
     if (medications.length > 0) {
       localStorage.setItem('All-Medications', JSON.stringify(medications));
+      // Update notification service with medications
+      notificationService.updateMedications(medications);
+      // Schedule notifications for all medications
+      scheduleAllNotifications();
     }
   }, [medications]);
+
+  // Update notification statuses every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      updateAllNotificationStatuses();
+    }, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, [medications]);
+
+  // Cleanup notifications on component unmount
+  useEffect(() => {
+    return () => {
+      // Don't stop the service completely as it might be used by other components
+      // Just clear current medication notifications
+      medications.forEach(med => {
+        notificationService.cancelMedicationNotifications(med._id);
+      });
+    };
+  }, []);
 
   const addMedication = async () => {
     const timesLower = {
@@ -146,6 +173,10 @@ function MedicationComponent() {
       };
       console.log(medication)
       setMedications((prev) => [...prev, medication]);
+      
+      // Schedule notifications for the new medication
+      notificationService.scheduleMedicationNotifications(medication);
+      updateNotificationStatus(medication);
 
     } catch (err) {
       console.log(err)
@@ -226,6 +257,9 @@ function MedicationComponent() {
     } 
 
     try {
+      // Cancel notifications for this medication
+      notificationService.cancelMedicationNotifications(id);
+      
       const newResponse = await axios.delete(`/medication/deleteMedication/${id}`,
         {
           headers: {
@@ -238,6 +272,8 @@ function MedicationComponent() {
       localStorage.removeItem('All-Medications');
       localStorage.setItem('All-Medications', JSON.stringify(allMedi));
 
+      // Update notification status
+      updateAllNotificationStatuses();
       
     } catch (err) {
       console.log(err);
@@ -256,16 +292,74 @@ function MedicationComponent() {
       if (response.status === 200) {
         toast.success(`Reminders ${!currentStatus ? 'enabled' : 'disabled'} for medication`);
         // Update local state
-        setMedications(prev => prev.map(med => 
+        const updatedMedications = medications.map(med => 
           med._id === medicationId 
             ? { ...med, reminderEnabled: !currentStatus }
             : med
-        ));
+        );
+        setMedications(updatedMedications);
+        
+        // Update notification service
+        const updatedMedication = updatedMedications.find(med => med._id === medicationId);
+        if (updatedMedication) {
+          notificationService.updateMedicationNotifications(updatedMedication);
+          updateNotificationStatus(updatedMedication);
+        }
       }
     } catch (error) {
       console.error('Error toggling reminder:', error);
       toast.error('Failed to update reminder settings');
     }
+  };
+
+  // Update notification status for a medication
+  const updateNotificationStatus = (medication) => {
+    const status = notificationService.getNotificationStatus(medication);
+    setNotificationStatus(prev => ({
+      ...prev,
+      [medication._id]: status
+    }));
+  };
+
+  // Update all notification statuses
+  const updateAllNotificationStatuses = () => {
+    medications.forEach(medication => {
+      updateNotificationStatus(medication);
+    });
+  };
+
+  // Schedule notifications for all medications
+  const scheduleAllNotifications = () => {
+    medications.forEach(medication => {
+      notificationService.scheduleMedicationNotifications(medication);
+    });
+    updateAllNotificationStatuses();
+  };
+
+  // Clear all notifications
+  const clearAllNotifications = () => {
+    notificationService.clearAllNotifications();
+    setNotificationStatus({});
+    toast.info('All medication notifications cleared');
+  };
+
+  // Get notification summary
+  const getNotificationSummary = () => {
+    const activeNotifications = medications.filter(med => 
+      med.reminderEnabled && med.isActive && 
+      new Date() >= new Date(med.startDate) && 
+      new Date() <= new Date(med.endDate)
+    ).length;
+    
+    const scheduledCount = Object.values(notificationStatus).reduce((total, status) => 
+      total + (status.scheduledCount || 0), 0
+    );
+
+    return {
+      activeNotifications,
+      scheduledCount,
+      totalMedications: medications.length
+    };
   };
 
   const filteredMedications = medications.filter(med => {
@@ -370,11 +464,17 @@ function MedicationComponent() {
               </div>
             </div>
             <div className='flex items-center'>
-              <button className="relative p-2 rounded-full hover:bg-gray-100 transition-colors" aria-label="Notifications">
-                <svg width="24" height="24" fill="none" viewBox="0 0 24 24">
-                  <path d="M12 22c1.1 0 2-.9 2-2h-4a2 2 0 0 0 2 2zm6-6V11c0-3.07-1.63-5.64-5-6.32V4a1 1 0 1 0-2 0v.68C7.63 5.36 6 7.92 6 11v5l-1.29 1.29A1 1 0 0 0 6 19h12a1 1 0 0 0 .71-1.71L18 16zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z" fill="#2563eb" />
-                  <circle cx="18" cy="6" r="3" fill="#ef4444" />
-                </svg>
+              <button 
+                className="relative p-2 rounded-full hover:bg-gray-100 transition-colors" 
+                aria-label="Notifications"
+                onClick={() => setShowNotificationPanel(!showNotificationPanel)}
+              >
+                <FaBell className="w-6 h-6 text-blue-600" />
+                {getNotificationSummary().scheduledCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center notification-badge">
+                    {getNotificationSummary().scheduledCount}
+                  </span>
+                )}
                 <span className="sr-only">View notifications</span>
               </button>
               <button
@@ -405,6 +505,163 @@ function MedicationComponent() {
               </h1>
             </div>
           </header>
+
+          {/* Notification Panel */}
+          {showNotificationPanel && (
+            <div className="bg-white shadow-lg border-t border-gray-200 p-4 notification-panel">
+              <div className="max-w-7xl mx-auto">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <FaBell className="text-blue-600" />
+                    Medication Notifications
+                  </h3>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={scheduleAllNotifications}
+                      className="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      Refresh
+                    </button>
+                    <button
+                      onClick={() => notificationService.forceCheckNotifications()}
+                      className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      Force Check
+                    </button>
+                    <button
+                      onClick={() => setShowDebugPanel(!showDebugPanel)}
+                      className="px-3 py-1 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition-colors"
+                    >
+                      Debug
+                    </button>
+                    <button
+                      onClick={clearAllNotifications}
+                      className="px-3 py-1 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                      Clear All
+                    </button>
+                    <button
+                      onClick={() => setShowNotificationPanel(false)}
+                      className="px-3 py-1 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="bg-blue-50 p-3 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">{getNotificationSummary().activeNotifications}</div>
+                    <div className="text-sm text-gray-600">Active Notifications</div>
+                  </div>
+                  <div className="bg-green-50 p-3 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">{getNotificationSummary().scheduledCount}</div>
+                    <div className="text-sm text-gray-600">Scheduled Today</div>
+                  </div>
+                  <div className="bg-purple-50 p-3 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600">{getNotificationSummary().totalMedications}</div>
+                    <div className="text-sm text-gray-600">Total Medications</div>
+                  </div>
+                </div>
+
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {medications.filter(med => med.reminderEnabled && med.isActive).map(medication => {
+                    const status = notificationStatus[medication._id];
+                    return (
+                      <div key={medication._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                            <FaPills className="text-blue-600 text-sm" />
+                          </div>
+                          <div>
+                            <div className="font-medium text-gray-900">{medication.name}</div>
+                            <div className="text-sm text-gray-600">{medication.dosage}</div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          {status?.nextNotification ? (
+                            <div className="text-sm text-gray-600">
+                              Next: {status.nextNotification.formattedTime}
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-400">No notifications scheduled</div>
+                          )}
+                          <div className="text-xs text-gray-500">
+                            {status?.scheduledCount || 0} scheduled
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  
+                  {medications.filter(med => med.reminderEnabled && med.isActive).length === 0 && (
+                    <div className="text-center text-gray-500 py-8">
+                      No active medication notifications
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Debug Panel */}
+          {showDebugPanel && (
+            <div className="bg-yellow-50 border-t border-yellow-200 p-4">
+              <div className="max-w-7xl mx-auto">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    🐛 Debug Information
+                  </h3>
+                  <button
+                    onClick={() => setShowDebugPanel(false)}
+                    className="px-3 py-1 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+                
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                  <pre className="text-sm text-gray-700 whitespace-pre-wrap">
+                    {JSON.stringify(notificationService.getDebugInfo(), null, 2)}
+                  </pre>
+                </div>
+                
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={() => {
+                      console.log('Current medications:', medications);
+                      console.log('Notification service debug:', notificationService.getDebugInfo());
+                    }}
+                    className="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Log to Console
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Test a notification for the first medication
+                      if (medications.length > 0) {
+                        notificationService.testNotification(medications[0]);
+                      }
+                    }}
+                    className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    Test First Medication
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Create a test notification that triggers in 5 seconds
+                      if (medications.length > 0) {
+                        notificationService.createTestNotification(medications[0]);
+                      }
+                    }}
+                    className="px-3 py-1 bg-orange-600 text-white text-sm rounded-lg hover:bg-orange-700 transition-colors"
+                  >
+                    Test in 5s
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="min-h-screen bg-gray-50 p-6">
             {/* Header */}
@@ -656,8 +913,21 @@ function MedicationComponent() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-lg font-semibold text-gray-900 truncate">{medication.name}</h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-lg font-semibold text-gray-900 truncate">{medication.name}</h3>
+                          {notificationStatus[medication._id]?.isActive && (
+                            <div className="flex items-center gap-1">
+                              <FaBell className="text-green-600 text-sm" />
+                              <span className="text-xs text-green-600 font-medium">Notifications On</span>
+                            </div>
+                          )}
+                        </div>
                         <p className="text-gray-600 text-sm truncate">{medication.dosage}</p>
+                        {notificationStatus[medication._id]?.nextNotification && (
+                          <p className="text-xs text-blue-600 font-medium">
+                            Next: {notificationStatus[medication._id].nextNotification.formattedTime}
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -846,26 +1116,54 @@ function MedicationComponent() {
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Reminder</label>
-                        <div className="flex items-center">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setNewMedication({
-                                ...newMedication,
-                                remainderEnabled: !newMedication.remainderEnabled,
-                              })
-                            }
-                            className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none ${newMedication.remainderEnabled ? 'bg-blue-600' : 'bg-gray-300'
-                              }`}
-                          >
-                            <span
-                              className={`inline-block w-5 h-5 transform bg-white rounded-full transition-transform ${newMedication.remainderEnabled ? 'translate-x-5' : 'translate-x-1'
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setNewMedication({
+                                  ...newMedication,
+                                  remainderEnabled: !newMedication.remainderEnabled,
+                                })
+                              }
+                              className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none ${newMedication.remainderEnabled ? 'bg-blue-600' : 'bg-gray-300'
                                 }`}
-                            />
-                          </button>
-                          <span className="ml-2 text-sm text-gray-700">
-                            {newMedication?.remainderEnabled ? 'Enabled' : 'Disabled'}
-                          </span>
+                            >
+                              <span
+                                className={`inline-block w-5 h-5 transform bg-white rounded-full transition-transform ${newMedication.remainderEnabled ? 'translate-x-5' : 'translate-x-1'
+                                  }`}
+                              />
+                            </button>
+                            <span className="ml-2 text-sm text-gray-700">
+                              {newMedication?.remainderEnabled ? 'Enabled' : 'Disabled'}
+                            </span>
+                          </div>
+                          {newMedication.remainderEnabled && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // Create a test medication object
+                                const testMedication = {
+                                  _id: 'test',
+                                  name: newMedication.name || 'Test Medication',
+                                  dosage: newMedication.dosage || '100mg',
+                                  times: {
+                                    morning: newMedication.times.Morning || '',
+                                    afternoon: newMedication.times.Afternoon || '',
+                                    evening: newMedication.times.Evening || ''
+                                  },
+                                  startDate: newMedication.startDate || new Date().toISOString().split('T')[0],
+                                  endDate: newMedication.endDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                                  reminderEnabled: true,
+                                  isActive: true
+                                };
+                                notificationService.testNotification(testMedication);
+                              }}
+                              className="px-2 py-1 bg-blue-100 text-blue-600 text-xs rounded hover:bg-blue-200 transition-colors"
+                            >
+                              Test
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -876,7 +1174,8 @@ function MedicationComponent() {
                           value={newMedication.times.Morning}
                           onChange={(e) => setNewMedication({ ...newMedication, times: { ...newMedication.times, Morning: e.target.value } })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          type="text" name="" id="" />
+                          type="time" 
+                          placeholder="09:00" />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Afternoon Time</label>
@@ -884,7 +1183,8 @@ function MedicationComponent() {
                           value={newMedication.times.Afternoon}
                           onChange={(e) => setNewMedication({ ...newMedication, times: { ...newMedication.times, Afternoon: e.target.value } })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          type="text" name="" id="" />
+                          type="time" 
+                          placeholder="15:00" />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Evening Time</label>
@@ -892,7 +1192,8 @@ function MedicationComponent() {
                           value={newMedication.times.Evening}
                           onChange={(e) => setNewMedication({ ...newMedication, times: { ...newMedication.times, Evening: e.target.value } })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          type="text" name="" id="" />
+                          type="time" 
+                          placeholder="21:00" />
                       </div>
 
                       <div className='col-span-2'>

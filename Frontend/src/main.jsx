@@ -3,11 +3,17 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import { AuthContext } from './utils/UserContextComponent';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { LanguageProvider } from './contexts/LanguageContext';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <AuthContext>
-      <App />
-    </AuthContext>
+    <LanguageProvider>
+      <ThemeProvider>
+        <AuthContext>
+          <App />
+        </AuthContext>
+      </ThemeProvider>
+    </LanguageProvider>
   </StrictMode>,
 )

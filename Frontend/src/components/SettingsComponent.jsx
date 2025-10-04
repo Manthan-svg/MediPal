@@ -28,11 +28,15 @@ import {
   FaPills
 } from 'react-icons/fa'
 import { UserContext } from '../utils/UserContextComponent'
+import { useTheme } from '../contexts/ThemeContext'
+import { useLanguage } from '../contexts/LanguageContext'
 import { toast } from 'react-toastify'
 import axios from '../utils/Axios.Config'
 
 function SettingsComponent() {
   const { user, setUser, token } = useContext(UserContext)
+  const { theme, updateTheme } = useTheme()
+  const { language, timezone, changeLanguage, changeTimezone, t } = useLanguage()
   const [activeTab, setActiveTab] = useState('profile')
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [notifications, setNotifications] = useState({
@@ -50,13 +54,6 @@ function SettingsComponent() {
     analytics: true,
     locationTracking: false
   })
-  const [appearance, setAppearance] = useState({
-    theme: 'light',
-    fontSize: 'medium',
-    colorScheme: 'blue',
-    animations: true,
-    compactMode: false
-  })
   const [security, setSecurity] = useState({
     twoFactor: false,
     biometric: false,
@@ -73,11 +70,10 @@ function SettingsComponent() {
   const [isLoading, setIsLoading] = useState(false)
 
   const settingsTabs = [
-    { id: 'profile', label: 'Profile', icon: FaUser, color: 'blue' },
-    { id: 'notifications', label: 'Notifications', icon: FaBell, color: 'green' },
-    { id: 'privacy', label: 'Privacy & Security', icon: FaShieldAlt, color: 'red' },
-    { id: 'appearance', label: 'Appearance', icon: FaPalette, color: 'purple' },
-    { id: 'about', label: 'About', icon: FaInfoCircle, color: 'gray' }
+    { id: 'profile', label: t('profile'), icon: FaUser, color: 'blue' },
+    { id: 'notifications', label: t('notifications'), icon: FaBell, color: 'green' },
+    { id: 'appearance', label: t('appearance'), icon: FaPalette, color: 'purple' },
+    { id: 'about', label: t('about'), icon: FaInfoCircle, color: 'gray' }
   ]
 
   const colorSchemes = [
@@ -125,42 +121,44 @@ function SettingsComponent() {
       const settings = JSON.parse(savedSettings)
       setNotifications(settings.notifications || notifications)
       setPrivacy(settings.privacy || privacy)
-      setAppearance(settings.appearance || appearance)
       setSecurity(settings.security || security)
     }
   }, [])
 
-  // const saveSettings = async () => {
-  //   setIsLoading(true)
-  //   try {
-  //     const settings = {
-  //       notifications,
-  //       privacy,
-  //       appearance,
-  //       security,
-  //     }
+  const saveSettings = async () => {
+    setIsLoading(true)
+    try {
+      const settings = {
+        notifications,
+        privacy,
+        security,
+      }
       
-  //     localStorage.setItem('mediPal-settings', JSON.stringify(settings))
+      localStorage.setItem('mediPal-settings', JSON.stringify(settings))
       
-  //     // Update user profile if needed
-  //     if (account.email !== user?.email || account.phone !== user?.phone) {
-  //       await axios.put('/profile/updateProfile', {
-  //         email: account.email,
-  //         phone: account.phone,
-  //         emergencyContact: account.emergencyContact
-  //       }, {
-  //         headers: { Authorization: `Bearer ${token}` }
-  //       })
-  //     }
-      
-  //     toast.success('Settings saved successfully!')
-  //   } catch (error) {
-  //     console.error('Error saving settings:', error)
-  //     toast.error('Failed to save settings')
-  //   } finally {
-  //     setIsLoading(false)
-  //   }
-  // }
+      toast.success(t('settingsSaved'))
+    } catch (error) {
+      console.error('Error saving settings:', error)
+      toast.error(t('error'))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleThemeChange = (newTheme) => {
+    updateTheme(newTheme)
+    toast.success(t('themeUpdated'))
+  }
+
+  const handleLanguageChange = (newLanguage) => {
+    changeLanguage(newLanguage)
+    toast.success(t('languageChanged'))
+  }
+
+  const handleTimezoneChange = (newTimezone) => {
+    changeTimezone(newTimezone)
+    toast.success(t('timezoneChanged'))
+  }
 
   const handlePasswordChange = async () => {
     if (passwordData.new !== passwordData.confirm) {
@@ -169,13 +167,14 @@ function SettingsComponent() {
     }
     
     try {
-      await axios.put('/profile/change-password', {
+      const changedPasswordResponse = await axios.put('/profile/change-password', {
         currentPassword: passwordData.current,
         newPassword: passwordData.new
       }, {
         headers: { Authorization: `Bearer ${token}` }
       })
       
+      console.log(changedPasswordResponse);
       toast.success('Password changed successfully!')
       setShowPasswordModal(false)
       setPasswordData({ current: '', new: '', confirm: '' })
@@ -221,7 +220,7 @@ function SettingsComponent() {
               </div>
               <button
                 onClick={() => setShowPasswordModal(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
               >
                 Change Password
               </button>
@@ -331,7 +330,7 @@ function SettingsComponent() {
       <button
         onClick={onChange}
         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-          enabled ? 'bg-blue-600' : 'bg-gray-300'
+          enabled ? 'bg-primary-600' : 'bg-gray-300'
         }`}
       >
         <span
@@ -373,6 +372,7 @@ function SettingsComponent() {
             <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
             <input
               type="email"
+              value={user?.email || ''}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
@@ -402,7 +402,7 @@ function SettingsComponent() {
             </div>
             <button
               onClick={() => setShowPasswordModal(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
             >
               Change Password
             </button>
@@ -427,6 +427,7 @@ function SettingsComponent() {
       </div>
     </div>
   )
+
 
   const renderNotificationsTab = () => (
     <div className="space-y-6">
@@ -510,19 +511,19 @@ function SettingsComponent() {
       <div className="bg-white rounded-xl p-6 shadow-sm">
         <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
           <FaPalette className="mr-2 text-purple-600" />
-          Theme & Colors
+          {t('themeAndColors')}
         </h3>
         <div className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">Color Scheme</label>
+            <label className="block text-sm font-medium text-gray-700 mb-3">{t('colorScheme')}</label>
             <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
               {colorSchemes.map((scheme) => (
                 <button
                   key={scheme.value}
-                  onClick={() => setAppearance({ ...appearance, colorScheme: scheme.value })}
+                  onClick={() => handleThemeChange({ colorScheme: scheme.value })}
                   className={`p-3 rounded-lg border-2 transition-all ${
-                    appearance.colorScheme === scheme.value
-                      ? 'border-blue-500 ring-2 ring-blue-200'
+                    theme.colorScheme === scheme.value
+                      ? 'border-primary-500 ring-2 ring-primary-200'
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
@@ -535,15 +536,15 @@ function SettingsComponent() {
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">Font Size</label>
+            <label className="block text-sm font-medium text-gray-700 mb-3">{t('fontSize')}</label>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {fontSizeOptions.map((size) => (
                 <button
                   key={size.value}
-                  onClick={() => setAppearance({ ...appearance, fontSize: size.value })}
+                  onClick={() => handleThemeChange({ fontSize: size.value })}
                   className={`p-3 rounded-lg border-2 transition-all ${
-                    appearance.fontSize === size.value
-                      ? 'border-blue-500 bg-blue-50'
+                    theme.fontSize === size.value
+                      ? 'border-primary-500 bg-primary-50'
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
@@ -559,13 +560,15 @@ function SettingsComponent() {
       <div className="bg-white rounded-xl p-6 shadow-sm">
         <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
           <FaGlobe className="mr-2 text-indigo-600" />
-          Language & Region
+          {t('languageAndRegion')}
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Language</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('language')}</label>
             <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              value={language}
+              onChange={(e) => handleLanguageChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             >
               {languages.map((lang) => (
                 <option key={lang.value} value={lang.value}>
@@ -575,9 +578,11 @@ function SettingsComponent() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Timezone</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('timezone')}</label>
             <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              value={timezone}
+              onChange={(e) => handleTimezoneChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             >
               {timezones.map((tz) => (
                 <option key={tz} value={tz}>{tz}</option>
@@ -590,21 +595,21 @@ function SettingsComponent() {
       <div className="bg-white rounded-xl p-6 shadow-sm">
         <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
           <FaCog className="mr-2 text-gray-600" />
-          Display Options
+          {t('displayOptions')}
         </h3>
         <div className="space-y-4">
           <ToggleSwitch
-            enabled={appearance.animations}
-            onChange={() => setAppearance({ ...appearance, animations: !appearance.animations })}
-            label="Animations"
+            enabled={theme.animations}
+            onChange={() => handleThemeChange({ animations: !theme.animations })}
+            label={t('animations')}
             description="Enable smooth transitions and animations"
             icon={FaSync}
           />
           
           <ToggleSwitch
-            enabled={appearance.compactMode}
-            onChange={() => setAppearance({ ...appearance, compactMode: !appearance.compactMode })}
-            label="Compact Mode"
+            enabled={theme.compactMode}
+            onChange={() => handleThemeChange({ compactMode: !theme.compactMode })}
+            label={t('compactMode')}
             description="Reduce spacing for more content"
             icon={FaDesktop}
           />
@@ -833,7 +838,6 @@ function SettingsComponent() {
     switch (activeTab) {
       case 'profile': return renderProfileTab()
       case 'notifications': return renderNotificationsTab()
-      case 'privacy': return renderPrivacyTab()
       case 'appearance': return renderAppearanceTab()
       case 'about': return renderAboutTab()
       default: return renderProfileTab()
@@ -841,12 +845,12 @@ function SettingsComponent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className={`min-h-screen bg-gray-50 ${!theme.animations ? 'no-animations' : ''} ${theme.compactMode ? 'compact-mode' : ''}`}>
       <div className="max-w-7xl mx-auto p-6">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Settings</h1>
-          <p className="text-gray-600">Manage your account preferences and app settings</p>
+          <h1 className="text-3xl-dynamic font-bold text-gray-900 mb-2">{t('settings')}</h1>
+          <p className="text-base-dynamic text-gray-600">Manage your account preferences and app settings</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -862,7 +866,7 @@ function SettingsComponent() {
                       onClick={() => setActiveTab(tab.id)}
                       className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-all ${
                         activeTab === tab.id
-                          ? `bg-${tab.color}-50 text-${tab.color}-700 border-l-4 border-${tab.color}-500`
+                          ? 'bg-primary-50 text-primary-700 border-l-4 border-primary-500'
                           : 'text-gray-600 hover:bg-gray-50'
                       }`}
                     >
@@ -884,22 +888,23 @@ function SettingsComponent() {
               <div className="bg-white rounded-xl p-6 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="font-medium text-gray-900">Save Changes</h3>
+                    <h3 className="font-medium text-gray-900">{t('saveChanges')}</h3>
                     <p className="text-sm text-gray-500">Your settings will be saved automatically</p>
                   </div>
                   <button
+                    onClick={saveSettings}
                     disabled={isLoading}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+                    className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
                   >
                     {isLoading ? (
                       <>
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Saving...
+                        {t('loading')}
                       </>
                     ) : (
                       <>
                         <FaSave className="mr-2" />
-                        Save Settings
+                        {t('saveSettings')}
                       </>
                     )}
                   </button>
@@ -953,7 +958,7 @@ function SettingsComponent() {
               </button>
               <button
                 onClick={handlePasswordChange}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
               >
                 Change Password
               </button>

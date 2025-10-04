@@ -72,3 +72,44 @@ export const updateUserProfileImageController  = async (req,res) => {
         return res.status(500).json({ message: "Error updating profile image" });
       }
 }
+
+export const changePasswordController = async(req,res) => {
+    validationResultUtil(req,res);
+    try{
+        const currentPassword = req.body.currentPassword;
+        const newPassword = req.body.newPassword;
+
+        console.log(currentPassword,newPassword);
+        
+        const user = await userModel.findById(req.user._id).select('+password');
+        
+        const isMatch = await user.comparePassword(currentPassword);
+        console.log(isMatch);
+        if(!isMatch){
+            return res.status(401).json({
+                message:"Invalid current password"
+            })
+        }
+
+        const hashedPassword = await userModel.hashedPassword(newPassword);
+
+        const changedNewPassword = await userModel.findByIdAndUpdate(user._id,{$set:{password:hashedPassword}});
+
+        if(!changedNewPassword){
+            return res.status(400).json({
+                message:"Failed to change new password"
+            })
+        }
+
+        return res.status(200).json({
+            message:"New password changed successfully",
+            user:changedNewPassword
+        })
+
+    }catch(err){
+        return res.status(500).json({
+            message:"Internal Server Error",
+            error:err.message
+        })
+    }
+}
